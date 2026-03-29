@@ -67,8 +67,13 @@ export const createTask = async (taskData) => {
 };
 
 export const updateTask = async (id, taskData) => {
-  const response = await api.put(`/tasks/${id}/`, taskData);
-  return response.data;
+  try {
+    const response = await api.put(`/tasks/${id}/`, taskData);
+    return response.data;
+  } catch (error) {
+    console.error('Update Task API Error:', error.response?.data || error.message);
+    throw error.response?.data || error;
+  }
 };
 
 export const deleteTask = async (id) => {
@@ -100,3 +105,6 @@ export const getCurrentUser = async () => {
   const response = await api.get('/users/me/');
   return response.data;
 };
+
+// Export the axios instance for direct API calls
+export { api };

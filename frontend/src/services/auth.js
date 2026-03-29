@@ -10,6 +10,7 @@ export const login = async (username, password) => {
     });
     localStorage.setItem('access_token', response.data.access);
     localStorage.setItem('refresh_token', response.data.refresh);
+    localStorage.setItem('username', username);
     return response.data;
   } catch (error) {
     throw error.response?.data || error;
@@ -54,6 +55,7 @@ export const register = async (username, email, password, first_name = '', last_
 export const logout = () => {
   localStorage.removeItem('access_token');
   localStorage.removeItem('refresh_token');
+  localStorage.removeItem('username');
 };
 
 export const validateToken = (token) => {

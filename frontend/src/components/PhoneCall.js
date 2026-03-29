@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './PhoneCall.css';
 
-function PhoneCall({ task, reminderTime, onAccept, onReject }) {
+function PhoneCall({ task, reminderTime, onAccept, onReject, onClose }) {
   const [callTime, setCallTime] = useState(0);
   const [isRinging, setIsRinging] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
@@ -17,6 +17,14 @@ function PhoneCall({ task, reminderTime, onAccept, onReject }) {
     reminderTimeRef.current = reminderTime;
   }, [reminderTime]);
 
+  // Prevent body scroll when phone call is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'auto';
+    };
+  }, []);
+
   // Stop playing oscillators immediately
   const stopPlayingOscillators = () => {
     if (activeOscsRef.current && activeOscsRef.current.length > 0) {
@@ -30,8 +38,6 @@ function PhoneCall({ task, reminderTime, onAccept, onReject }) {
       activeOscsRef.current = [];
     }
   };
-
-  // Check if deadline is met (overdue)
   useEffect(() => {
     if (task && task.due_date) {
       const now = new Date();
@@ -203,7 +209,19 @@ function PhoneCall({ task, reminderTime, onAccept, onReject }) {
       ringtoneTimeoutRef.current = null;
     }
     stopPlayingOscillators();
+    
+    // Play accept sound BEFORE suspending context
     playAcceptSound();
+    
+    // Suspend audio context after playing sound
+    try {
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.suspend();
+      }
+    } catch (err) {
+      console.log('Error suspending audio context:', err);
+    }
+    
     onAccept();
   };
 
@@ -217,8 +235,48 @@ function PhoneCall({ task, reminderTime, onAccept, onReject }) {
       ringtoneTimeoutRef.current = null;
     }
     stopPlayingOscillators();
+    
+    // Play reject sound BEFORE suspending context
     playRejectSound();
+    
+    // Suspend audio context after playing sound
+    try {
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.suspend();
+      }
+    } catch (err) {
+      console.log('Error suspending audio context:', err);
+    }
+    
     onReject();
+  };
+
+  const handleClose = () => {
+    // Mark call as inactive to stop all audio
+    isCallActiveRef.current = false;
+    
+    // Stop all ringtone audio immediately
+    if (ringtoneTimeoutRef.current) {
+      clearTimeout(ringtoneTimeoutRef.current);
+      ringtoneTimeoutRef.current = null;
+    }
+    
+    // Stop all playing oscillators
+    stopPlayingOscillators();
+    
+    // Suspend audio context to stop all audio
+    try {
+      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.suspend();
+      }
+    } catch (err) {
+      console.log('Error suspending audio context:', err);
+    }
+    
+    // Call onClose callback
+    if (onClose) {
+      onClose();
+    }
   };
 
   const formatTime = (seconds) => {
@@ -235,13 +293,22 @@ function PhoneCall({ task, reminderTime, onAccept, onReject }) {
           <div className="phone-status-bar">
             <span className="signal-dots">●●●●●</span>
             <span className="carrier">DeadlineMate</span>
-            <button 
-              className="mute-btn"
-              onClick={() => setIsMuted(!isMuted)}
-              title={isMuted ? 'Unmute' : 'Mute'}
-            >
-              {isMuted ? '🔇' : '🔔'}
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                className="mute-btn"
+                onClick={() => setIsMuted(!isMuted)}
+                title={isMuted ? 'Unmute' : 'Mute'}
+              >
+                {isMuted ? '🔇' : '🔔'}
+              </button>
+              <button 
+                className="close-btn"
+                onClick={handleClose}
+                title="Close Call"
+              >
+                ✕
+              </button>
+            </div>
           </div>
 
           {/* Main Content */}

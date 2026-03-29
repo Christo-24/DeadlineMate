@@ -4,6 +4,9 @@ import './App.css';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Calendar from './pages/Calendar';
+import UnsubmittedTasks from './pages/UnsubmittedTasks';
+import FinishedTasks from './pages/FinishedTasks';
 import { validateToken } from './services/auth';
 
 function App() {
@@ -37,6 +40,18 @@ function App() {
         <Route 
           path="/dashboard" 
           element={isAuthenticated ? <Dashboard setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/login" />} 
+        />
+        <Route 
+          path="/calendar" 
+          element={isAuthenticated ? <Calendar /> : <Navigate to="/login" />} 
+        />
+        <Route 
+          path="/unsubmitted" 
+          element={isAuthenticated ? <UnsubmittedTasks setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/login" />} 
+        />
+        <Route 
+          path="/finished" 
+          element={isAuthenticated ? <FinishedTasks setIsAuthenticated={setIsAuthenticated} /> : <Navigate to="/login" />} 
         />
         <Route 
           path="/" 

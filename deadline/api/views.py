@@ -16,15 +16,15 @@ class UserRegisterView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        
+        # Create user with password passed directly to create_user
         user = User.objects.create_user(
             username=serializer.validated_data['username'],
             email=serializer.validated_data.get('email', ''),
+            password=request.data.get('password', ''),
             first_name=serializer.validated_data.get('first_name', ''),
             last_name=serializer.validated_data.get('last_name', '')
         )
-        if 'password' in request.data:
-            user.set_password(request.data['password'])
-            user.save()
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 
