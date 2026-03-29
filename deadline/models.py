@@ -15,6 +15,7 @@ class Task(models.Model):
     due_date = models.DateTimeField()
     completed = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
+    reminder_time = models.TimeField(null=True, blank=True, help_text="Time of day to trigger reminder")
 
     def __str__(self):
         return self.title
