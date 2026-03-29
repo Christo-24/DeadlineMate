@@ -4,7 +4,8 @@ from deadline.api.views import (
     ProfileListCreateView, ProfileDetailView,
     TaskListCreateView, TaskDetailView,
     TaskPendingView, TaskCompletedView,
-    mark_task_complete, mark_task_incomplete
+    mark_task_complete, mark_task_incomplete,
+    subscribe_push, unsubscribe_push, get_push_subscriptions, send_notification
 )
 
 urlpatterns = [
@@ -28,4 +29,10 @@ urlpatterns = [
     # Generic task routes last
     path('tasks/', TaskListCreateView.as_view(), name='task-list'),
     path('tasks/<int:pk>/', TaskDetailView.as_view(), name='task-detail'),
+    
+    # Push Notification endpoints
+    path('notifications/subscribe/', subscribe_push, name='subscribe-push'),
+    path('notifications/unsubscribe/', unsubscribe_push, name='unsubscribe-push'),
+    path('notifications/subscriptions/', get_push_subscriptions, name='get-subscriptions'),
+    path('notifications/send/', send_notification, name='send-notification'),
 ]

@@ -3,9 +3,11 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.contrib.auth.models import User
+from django.conf import settings
+import json
 
-from deadline.models import Profile, Task
-from deadline.api.serializer import UserSerializer, ProfileSerializer, TaskSerializer
+from deadline.models import Profile, Task, PushSubscription
+from deadline.api.serializer import UserSerializer, ProfileSerializer, TaskSerializer, PushSubscriptionSerializer
 
 
 class UserRegisterView(generics.CreateAPIView):
@@ -140,3 +142,160 @@ def mark_task_incomplete(request, pk):
         return Response(serializer.data)
     except Task.DoesNotExist:
         return Response({"detail": "Task not found"}, status=status.HTTP_404_NOT_FOUND)
+
+
+# Push Notification Endpoints
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def subscribe_push(request):
+    """Subscribe user to push notifications"""
+    try:
+        data = request.data
+        
+        # Extract subscription details
+        endpoint = data.get('endpoint')
+        subscription_keys = data.get('keys', {})
+        auth = subscription_keys.get('auth')
+        p256dh = subscription_keys.get('p256dh')
+        
+        if not all([endpoint, auth, p256dh]):
+            return Response(
+                {"detail": "Missing subscription data"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Create or update subscription
+        subscription, created = PushSubscription.objects.get_or_create(
+            user=request.user,
+            endpoint=endpoint,
+            defaults={
+                'auth': auth,
+                'p256dh': p256dh,
+                'is_active': True
+            }
+        )
+        
+        if not created:
+            subscription.auth = auth
+            subscription.p256dh = p256dh
+            subscription.is_active = True
+            subscription.save()
+        
+        serializer = PushSubscriptionSerializer(subscription)
+        return Response(
+            {"status": "subscribed", "subscription": serializer.data},
+            status=status.HTTP_201_CREATED
+        )
+    except Exception as e:
+        return Response(
+            {"detail": str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def unsubscribe_push(request):
+    """Unsubscribe user from push notifications"""
+    try:
+        endpoint = request.data.get('endpoint')
+        
+        if not endpoint:
+            return Response(
+                {"detail": "Endpoint required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        subscription = PushSubscription.objects.get(
+            user=request.user,
+            endpoint=endpoint
+        )
+        subscription.is_active = False
+        subscription.save()
+        
+        return Response({"status": "unsubscribed"})
+    except PushSubscription.DoesNotExist:
+        return Response(
+            {"detail": "Subscription not found"},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_push_subscriptions(request):
+    """Get all active push subscriptions for user"""
+    subscriptions = PushSubscription.objects.filter(
+        user=request.user,
+        is_active=True
+    )
+    serializer = PushSubscriptionSerializer(subscriptions, many=True)
+    return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_notification(request):
+    """Send notification to all user's subscriptions"""
+    try:
+        from webpush import webpush, WebPushException
+        
+        title = request.data.get('title', 'DeadlineMate')
+        body = request.data.get('body', '')
+        task_id = request.data.get('task_id')
+        
+        if not body:
+            return Response(
+                {"detail": "Body required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        subscriptions = PushSubscription.objects.filter(
+            user=request.user,
+            is_active=True
+        )
+        
+        sent_count = 0
+        failed_count = 0
+        
+        for subscription in subscriptions:
+            try:
+                webpush(
+                    subscription_info={
+                        "endpoint": subscription.endpoint,
+                        "keys": {
+                            "auth": subscription.auth,
+                            "p256dh": subscription.p256dh
+                        }
+                    },
+                    data=json.dumps({
+                        "title": title,
+                        "body": body,
+                        "tag": f"task-{task_id}" if task_id else "deadlinemate",
+                        "url": "/dashboard" if task_id else "/"
+                    }),
+                    vapid_private_key=settings.VAPID_PRIVATE_KEY,
+                    vapid_claims={
+                        "sub": f"mailto:{request.user.email}",
+                        "exp": 12 * 60 * 60
+                    }
+                )
+                sent_count += 1
+            except WebPushException as e:
+                print(f"Failed to send push: {e}")
+                failed_count += 1
+                if 'expired' in str(e) or '410' in str(e):
+                    subscription.is_active = False
+                    subscription.save()
+        
+        return Response({
+            "status": "sent",
+            "sent": sent_count,
+            "failed": failed_count
+        })
+    except Exception as e:
+        return Response(
+            {"detail": str(e)},
+            status=status.HTTP_400_BAD_REQUEST
+        )

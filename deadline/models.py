@@ -20,3 +20,19 @@ class Task(models.Model):
     def __str__(self):
         return self.title
 
+
+class PushSubscription(models.Model):
+    """Store push notification subscriptions for users"""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='push_subscriptions')
+    endpoint = models.URLField(max_length=500)
+    auth = models.CharField(max_length=255)
+    p256dh = models.TextField()
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'endpoint')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.endpoint[:50]}..."

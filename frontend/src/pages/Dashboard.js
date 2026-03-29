@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { logout } from '../services/auth';
 import { getTasks, createTask, updateTask, deleteTask, markTaskComplete, markTaskIncomplete } from '../services/api';
+import { subscribeToPushNotifications, requestBackgroundSync } from '../services/pwa';
 import PhoneCall from '../components/PhoneCall';
 import Sidebar from '../components/Sidebar';
 import './Dashboard.css';
@@ -102,6 +103,11 @@ function Dashboard({ setIsAuthenticated }) {
 
   useEffect(() => {
     fetchTasks();
+    // Subscribe to push notifications on dashboard load
+    subscribeToPushNotifications()
+      .then(() => requestBackgroundSync('sync-tasks'))
+      .catch(err => console.warn('PWA setup warning:', err));
+    
     // Check for overdue tasks every 10 seconds (instead of 30) for better deadline accuracy
     const interval = setInterval(() => {
       fetchTasks();
