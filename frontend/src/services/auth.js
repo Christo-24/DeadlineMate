@@ -16,6 +16,26 @@ export const login = async (username, password) => {
   }
 };
 
+export const refreshAccessToken = async () => {
+  try {
+    const refresh_token = localStorage.getItem('refresh_token');
+    if (!refresh_token) {
+      throw new Error('No refresh token available');
+    }
+    
+    const response = await axios.post(`${API_URL}/token/refresh/`, {
+      refresh: refresh_token,
+    });
+    
+    localStorage.setItem('access_token', response.data.access);
+    return response.data;
+  } catch (error) {
+    localStorage.removeItem('access_token');
+    localStorage.removeItem('refresh_token');
+    throw error.response?.data || error;
+  }
+};
+
 export const register = async (username, email, password, first_name = '', last_name = '') => {
   try {
     const response = await axios.post(`${API_URL}/register/`, {

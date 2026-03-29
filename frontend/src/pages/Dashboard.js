@@ -10,6 +10,7 @@ function Dashboard({ setIsAuthenticated }) {
   const [newTask, setNewTask] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [description, setDescription] = useState('');
+  const [reminderTime, setReminderTime] = useState('09:00');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -20,23 +21,48 @@ function Dashboard({ setIsAuthenticated }) {
 
   useEffect(() => {
     fetchTasks();
-    // Check for overdue tasks every 30 seconds
+    // Check for overdue tasks every 10 seconds (instead of 30) for better deadline accuracy
     const interval = setInterval(() => {
       fetchTasks();
-    }, 30000);
+    }, 10000);
     return () => clearInterval(interval);
   }, []);
 
-  // Check for overdue tasks and update phone call display
+  // Check for overdue tasks or reminder time reached - continuously check
   useEffect(() => {
-    const now = new Date();
-    const overdueTask = tasks.find(
-      (task) =>
-        !task.completed &&
-        !dismissedTasks.has(task.id) &&
-        new Date(task.due_date) < now
-    );
-    setOverdueTask(overdueTask || null);
+    const checkTasks = () => {
+      const now = new Date();
+      const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      
+      const taskToShow = tasks.find((task) => {
+        if (task.completed) return false;
+        
+        const dueDate = new Date(task.due_date);
+        
+        // Check if deadline has passed (ALWAYS show, even if dismissed as reminder)
+        // Deadline overrides dismissal status
+        if (dueDate < now) return true;
+        
+        // Check if reminder time has been reached today (only show if not dismissed)
+        if (!dismissedTasks.has(task.id) && task.reminder_time) {
+          // Extract HH:MM from reminder_time (handle both "HH:MM" and "HH:MM:SS" formats)
+          const reminderTimeShort = task.reminder_time.substring(0, 5);
+          if (currentTime >= reminderTimeShort) return true;
+        }
+        
+        return false;
+      });
+      
+      setOverdueTask(taskToShow || null);
+    };
+
+    // Check immediately
+    checkTasks();
+
+    // Check every 10 seconds for reminder triggers
+    const interval = setInterval(checkTasks, 10000);
+    
+    return () => clearInterval(interval);
   }, [tasks, dismissedTasks]);
 
   const fetchTasks = async () => {
@@ -63,11 +89,13 @@ function Dashboard({ setIsAuthenticated }) {
       const response = await createTask({
         title: newTask,
         due_date: dueDateISO,
+        reminder_time: reminderTime,
       });
       setTasks([...tasks, response]);
       setNewTask('');
       setDueDate('');
       setDescription('');
+      setReminderTime('09:00');
       setError('');
       setSuccess('Task created successfully!');
       setShowForm(false);
@@ -142,6 +170,7 @@ function Dashboard({ setIsAuthenticated }) {
       {overdueTask && (
         <PhoneCall
           task={overdueTask}
+          reminderTime={overdueTask.reminder_time}
           onAccept={handleAcceptCall}
           onReject={handleRejectCall}
         />
@@ -215,6 +244,18 @@ function Dashboard({ setIsAuthenticated }) {
                   onChange={(e) => setDescription(e.target.value)}
                   rows="3"
                 />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="reminderTime">Reminder Time</label>
+                <input
+                  id="reminderTime"
+                  type="time"
+                  value={reminderTime}
+                  onChange={(e) => setReminderTime(e.target.value)}
+                  required
+                />
+                <small>The call will trigger at this time on the deadline date</small>
               </div>
 
               <button type="submit" className="submit-btn">Create Task</button>

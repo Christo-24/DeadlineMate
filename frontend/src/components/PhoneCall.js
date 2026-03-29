@@ -1,16 +1,51 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './PhoneCall.css';
 
-function PhoneCall({ task, onAccept, onReject }) {
+function PhoneCall({ task, reminderTime, onAccept, onReject }) {
   const [callTime, setCallTime] = useState(0);
   const [isRinging, setIsRinging] = useState(true);
   const [isMuted, setIsMuted] = useState(false);
   const audioContextRef = useRef(null);
   const ringtoneTimeoutRef = useRef(null);
+  const activeOscsRef = useRef([]); // Currently playing oscillators
+  const isDeadlineMetRef = useRef(false);
+  const isCallActiveRef = useRef(true);
+  const reminderTimeRef = useRef(reminderTime);
+
+  // Update reminder time ref when prop changes
+  useEffect(() => {
+    reminderTimeRef.current = reminderTime;
+  }, [reminderTime]);
+
+  // Stop playing oscillators immediately
+  const stopPlayingOscillators = () => {
+    if (activeOscsRef.current && activeOscsRef.current.length > 0) {
+      activeOscsRef.current.forEach(osc => {
+        try {
+          osc.stop();
+        } catch (err) {
+          // Already stopped
+        }
+      });
+      activeOscsRef.current = [];
+    }
+  };
+
+  // Check if deadline is met (overdue)
+  useEffect(() => {
+    if (task && task.due_date) {
+      const now = new Date();
+      const dueDate = new Date(task.due_date);
+      isDeadlineMetRef.current = dueDate < now;
+    }
+  }, [task]);
+
+
 
   // Play ringtone sound
   const playRingtone = (context, muted) => {
-    if (!context || muted) return;
+    // Check if call is still active before playing
+    if (!isCallActiveRef.current || !context || muted) return;
 
     try {
       // Create oscillators for ringtone (1000Hz and 1400Hz)
@@ -33,24 +68,34 @@ function PhoneCall({ task, onAccept, onReject }) {
       osc1.stop(context.currentTime + 0.5);
       osc2.stop(context.currentTime + 0.5);
 
-      // Schedule next ring after 1 second
-      if (!muted) {
-        ringtoneTimeoutRef.current = setTimeout(() => playRingtone(context, muted), 1000);
+      // Track currently playing oscillators
+      activeOscsRef.current.push(osc1, osc2);
+
+      // Schedule next ring after 1 second (only if call is still active)
+      if (!muted && isCallActiveRef.current) {
+        ringtoneTimeoutRef.current = setTimeout(() => {
+          playRingtone(context, muted);
+        }, 1000);
       }
     } catch (err) {
       console.log('Audio playback not available');
     }
   };
 
+
+
   // Initialize Web Audio API and start ringing
   useEffect(() => {
+    isCallActiveRef.current = true;
+
     try {
-      // Create audio context
       const context = new (window.AudioContext || window.webkitAudioContext)();
       audioContextRef.current = context;
 
-      // Start ringing sound
-      playRingtone(context, isMuted);
+      // Start ringing immediately if not muted
+      if (!isMuted) {
+        playRingtone(context, false);
+      }
     } catch (err) {
       console.log('Audio context failed:', err);
     }
@@ -70,17 +115,29 @@ function PhoneCall({ task, onAccept, onReject }) {
       if (ringtoneTimeoutRef.current) {
         clearTimeout(ringtoneTimeoutRef.current);
       }
+      // Cleanup: stop all playing oscillators
+      stopPlayingOscillators();
     };
   }, []);
 
   // Handle mute toggle
   useEffect(() => {
+    if (!isCallActiveRef.current) return;
+
     if (isMuted) {
+      // Stop all sounds when muted
       if (ringtoneTimeoutRef.current) {
         clearTimeout(ringtoneTimeoutRef.current);
+        ringtoneTimeoutRef.current = null;
       }
+      stopPlayingOscillators();
     } else {
-      if (audioContextRef.current) {
+      // Resume sounds when unmuted
+      if (audioContextRef.current && isCallActiveRef.current) {
+        // Clear any pending timeouts and start fresh
+        if (ringtoneTimeoutRef.current) {
+          clearTimeout(ringtoneTimeoutRef.current);
+        }
         playRingtone(audioContextRef.current, false);
       }
     }
@@ -137,11 +194,29 @@ function PhoneCall({ task, onAccept, onReject }) {
   };
 
   const handleAccept = () => {
+    // Mark call as inactive to stop all audio
+    isCallActiveRef.current = false;
+    
+    // Stop all ringtone audio immediately
+    if (ringtoneTimeoutRef.current) {
+      clearTimeout(ringtoneTimeoutRef.current);
+      ringtoneTimeoutRef.current = null;
+    }
+    stopPlayingOscillators();
     playAcceptSound();
     onAccept();
   };
 
   const handleReject = () => {
+    // Mark call as inactive to stop all audio
+    isCallActiveRef.current = false;
+    
+    // Stop all ringtone audio immediately
+    if (ringtoneTimeoutRef.current) {
+      clearTimeout(ringtoneTimeoutRef.current);
+      ringtoneTimeoutRef.current = null;
+    }
+    stopPlayingOscillators();
     playRejectSound();
     onReject();
   };
@@ -193,6 +268,16 @@ function PhoneCall({ task, onAccept, onReject }) {
               <p className="task-time-call">
                 Due: {new Date(task?.due_date).toLocaleString()}
               </p>
+              {isDeadlineMetRef.current && (
+                <p className="deadline-status" style={{ color: '#ff4444', marginTop: '8px', fontSize: '12px' }}>
+                  ⚠️ Deadline Passed - Call Mandatory
+                </p>
+              )}
+              {!isDeadlineMetRef.current && reminderTime && (
+                <p className="reminder-status" style={{ color: '#666', marginTop: '8px', fontSize: '12px' }}>
+                  🔔 Reminder at {reminderTime}
+                </p>
+              )}
             </div>
 
             {/* Action Buttons */}

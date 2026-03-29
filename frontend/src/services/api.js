@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { getAuthHeader } from './auth';
+import { getAuthHeader, refreshAccessToken } from './auth';
 
 const API_URL = process.env.REACT_APP_API_URL;
 
@@ -13,6 +13,37 @@ api.interceptors.request.use((config) => {
   config.headers = { ...config.headers, ...headers };
   return config;
 });
+
+// Handle token expiration and refresh
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+
+    // If token is invalid (401) and we haven't tried to refresh yet
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        // Try to refresh the token
+        await refreshAccessToken();
+        
+        // Retry the original request with new token
+        const headers = getAuthHeader();
+        originalRequest.headers = { ...originalRequest.headers, ...headers };
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Refresh failed, redirect to login
+        localStorage.removeItem('access_token');
+        localStorage.removeItem('refresh_token');
+        window.location.href = '/login';
+        return Promise.reject(refreshError);
+      }
+    }
+
+    return Promise.reject(error);
+  }
+);
 
 // Tasks API
 export const getTasks = async () => {
